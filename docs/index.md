@@ -70,4 +70,4 @@ La página utiliza MkDocs Material, como la tarea de cuadratura gaussiana. Para 
 mkdocs serve
 ```
 
-No se publica automáticamente como GitHub Pages porque el repositorio es privado.
+La documentación se prepara con MkDocs Material y se publica mediante la rama `gh-pages` cuando GitHub Pages está habilitado en el repositorio.
