@@ -33,22 +33,38 @@ def inicializar(nx, ny, condicion, frontera):
     return u
 
 
-def paso(u, rx, ry, frontera):
-    """Actualiza la malla por FTCS con borde fijo o aislado."""
-    p = np.pad(u, 1, mode="edge")
-    v = u + rx * (p[1:-1, 2:] - 2*u + p[1:-1, :-2])
-    v += ry * (p[2:, 1:-1] - 2*u + p[:-2, 1:-1])
+def paso(u, rx, ry, frontera, salida=None):
+    """Avanza un paso temporal; permite reutilizar la matriz de salida."""
+    if salida is None:
+        salida = np.empty_like(u)
+
     if frontera == "fija":
-        v[[0, -1], :] = 0
-        v[:, [0, -1]] = 0
-    return v
+        centro = u[1:-1, 1:-1]
+        salida[1:-1, 1:-1] = (
+            centro
+            + rx * (u[1:-1, 2:] - 2 * centro + u[1:-1, :-2])
+            + ry * (u[2:, 1:-1] - 2 * centro + u[:-2, 1:-1])
+        )
+        salida[[0, -1], :] = 0
+        salida[:, [0, -1]] = 0
+    elif frontera == "aislada":
+        p = np.pad(u, 1, mode="edge")
+        salida[:] = (
+            u
+            + rx * (p[1:-1, 2:] - 2 * u + p[1:-1, :-2])
+            + ry * (p[2:, 1:-1] - 2 * u + p[:-2, 1:-1])
+        )
+    else:
+        raise ValueError("Frontera: fija o aislada")
+    return salida
 
 
 def simular(condicion="gauss", frontera="fija", nx=81, ny=81, tiempo=0.05):
     """Devuelve temperaturas en cuatro instantes y parámetros de integración."""
     if frontera not in ("fija", "aislada"):
         raise ValueError("Frontera: fija o aislada")
-    if nx < 3 or ny < 3 or tiempo <= 0 or ALFA <= 0:
+    if (nx < 3 or ny < 3 or not math.isfinite(tiempo) or tiempo <= 0
+            or not math.isfinite(ALFA) or ALFA <= 0 or LX <= 0 or LY <= 0):
         raise ValueError("Malla, tiempo y difusividad deben ser positivos")
 
     dx = LX / (nx - 1)
@@ -60,10 +76,12 @@ def simular(condicion="gauss", frontera="fija", nx=81, ny=81, tiempo=0.05):
     ry = ALFA * dt / dy**2
 
     u = inicializar(nx, ny, condicion, frontera)
+    auxiliar = np.empty_like(u)
     instantes = {0, pasos//3, 2*pasos//3, pasos}
     cuadros = [(0.0, u.copy())]
     for n in range(1, pasos + 1):
-        u = paso(u, rx, ry, frontera)
+        paso(u, rx, ry, frontera, salida=auxiliar)
+        u, auxiliar = auxiliar, u
         if n in instantes:
             cuadros.append((n * dt, u.copy()))
     return cuadros, pasos, dt
