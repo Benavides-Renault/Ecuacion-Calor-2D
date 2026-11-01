@@ -49,7 +49,7 @@ python calor.py doble aislada 81 81 0.05
 **C++:** mismo esquema, un hilo o varios hilos con memoria compartida.
 
 ```bash
-g++ -O2 -fopenmp calor.cpp -o calor
+g++ -O3 -std=c++17 -fopenmp calor.cpp -o calor
 ./calor gauss fija 81 81 0.05 1
 ./calor gauss fija 81 81 0.05 4
 ```
