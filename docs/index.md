@@ -54,7 +54,19 @@ g++ -O2 -fopenmp calor.cpp -o calor
 ./calor gauss fija 81 81 0.05 4
 ```
 
-La aceleración se calcula como $S=T_1/T_p$ a partir de los tiempos mostrados por el programa. Para problemas pequeños el paralelismo puede resultar más lento debido al costo de los hilos.
+## Rendimiento y aceleración OpenMP
+
+Con 1 hilo se utiliza la ejecución secuencial; con 2 o 4 hilos se reparten las filas de la malla usando memoria compartida. Los hilos permanecen activos durante la simulación para evitar crearlos en cada paso.
+
+Se compara **el mismo problema** (malla de 401 × 401, tiempo final 0.003, condición gaussiana y frontera fija). Para cada cantidad de hilos se calcula la mediana de tres mediciones y la aceleración:
+
+$
+S_p = \frac{T_1}{T_p}
+$
+
+Un valor $S_p > 1$ indica aceleración; un valor menor indica que el paralelismo fue más lento. Los tiempos dependen de la computadora y de su carga, por lo que no se garantiza una aceleración con cualquier número de hilos. La tabla siguiente se genera automáticamente en GitHub Actions, tras ejecutar el mismo programa C++ con 1, 2 y 4 hilos.
+
+<!-- RESULTADOS_RENDIMIENTO -->
 
 ## Mapas de calor
 
@@ -70,4 +82,4 @@ La página utiliza MkDocs Material, como la tarea de cuadratura gaussiana. Para 
 mkdocs serve
 ```
 
-La documentación se prepara con MkDocs Material y se publica mediante la rama `gh-pages` cuando GitHub Pages está habilitado en el repositorio.
+La documentación se publica automáticamente en GitHub Pages tras superar las pruebas y construir el sitio.
