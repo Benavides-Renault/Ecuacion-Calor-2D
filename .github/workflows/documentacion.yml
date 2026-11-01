@@ -1,4 +1,4 @@
-name: Documentación y GitHub Pages
+name: Pruebas y documentación
 
 on:
   push:
@@ -6,31 +6,73 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
+  contents: write
 
 jobs:
   publicar:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: python -m pip install -r requirements.txt
-      - run: python -m mkdocs build --strict
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: site
-      - name: Publicar
-        id: deploy
-        uses: actions/deploy-pages@v4
+      - name: Comprobar Python y C++ con OpenMP
+        run: |
+          g++ -O2 -fopenmp calor.cpp -o calor
+          python - <<'PY'
+          import re
+          import subprocess
+          import numpy as np
+          import calor
+
+          pruebas = 0
+          for condicion in ("gauss", "doble", "seno"):
+              for frontera in ("fija", "aislada"):
+                  for nx, ny in ((19, 17), (31, 27)):
+                      cuadros, pasos, dt = calor.simular(
+                          condicion, frontera, nx, ny, 0.01
+                      )
+                      inicio = cuadros[0][1]
+                      final = cuadros[-1][1]
+                      dx = calor.LX/(nx-1)
+                      dy = calor.LY/(ny-1)
+                      assert calor.ALFA*dt*(1/dx**2 + 1/dy**2) <= 0.5
+                      assert final.min() >= inicio.min() - 1e-9
+                      assert final.max() <= inicio.max() + 1e-9
+                      if frontera == "fija":
+                          assert np.max(np.abs(final[[0, -1], :])) < 1e-10
+                          assert np.max(np.abs(final[:, [0, -1]])) < 1e-10
+                      else:
+                          assert abs(final.sum()-inicio.sum()) < 1e-7
+                      for hilos in (1, 2, 4):
+                          salida = subprocess.check_output([
+                              "./calor", condicion, frontera, str(nx), str(ny),
+                              "0.01", str(hilos)
+                          ], text=True)
+                          media = float(re.search(
+                              r"Temperatura media: ([0-9.eE+-]+)", salida
+                          ).group(1))
+                          centro = float(re.search(
+                              r"centro: ([0-9.eE+-]+)", salida
+                          ).group(1))
+                          assert abs(media-final.mean()) < 1e-8
+                          assert abs(centro-final[ny//2, nx//2]) < 1e-8
+                          pruebas += 1
+
+          x = np.linspace(0, 1, 41)
+          X, Y = np.meshgrid(x, x)
+          cuadros, _, _ = calor.simular("seno", "fija", 41, 41, 0.01)
+          exacta = 100*np.sin(np.pi*X)*np.sin(np.pi*Y)*np.exp(-2*np.pi**2*0.01)
+          assert np.max(np.abs(cuadros[-1][1]-exacta)) < 0.1
+          print(f"{pruebas} comparaciones Python/C++/OpenMP superadas")
+          print("Estabilidad, conservación y solución analítica comprobadas")
+          PY
+      - name: Generar mapas de calor
+        run: python calor.py gauss fija 41 41 0.01
+      - name: Construir documentación
+        run: python -m mkdocs build --strict
+      - name: Publicar con MkDocs en gh-pages
+        run: python -m mkdocs gh-deploy --force
