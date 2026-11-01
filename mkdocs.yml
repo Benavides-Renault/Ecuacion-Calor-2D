@@ -1,5 +1,7 @@
 site_name: "Ecuación de calor en dos dimensiones"
 site_author: "Orlando Ismael Benavides Renault"
+site_url: "https://benavides-renault.github.io/Ecuacion-Calor-2D/"
+repo_url: "https://github.com/Benavides-Renault/Ecuacion-Calor-2D"
 theme:
   name: material
   language: es
