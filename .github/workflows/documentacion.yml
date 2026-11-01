@@ -6,11 +6,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   publicar:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,5 +79,12 @@ jobs:
         run: python calor.py gauss fija 41 41 0.01
       - name: Construir documentación
         run: python -m mkdocs build --strict
-      - name: Publicar con MkDocs en gh-pages
-        run: python -m mkdocs gh-deploy --force
+      - name: Preparar GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Subir el sitio
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - name: Publicar
+        id: deploy
+        uses: actions/deploy-pages@v4
