@@ -2,6 +2,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <numeric>
 #include <stdexcept>
 #include <string>
@@ -26,19 +27,23 @@ int main(int argc, char* argv[]) {
             throw std::invalid_argument("Condición inicial desconocida");
         if (frontera != "fija" && frontera != "aislada")
             throw std::invalid_argument("Frontera desconocida");
-        if (nx < 3 || ny < 3 || tiempo <= 0 || hilos < 1)
+        if (nx < 3 || ny < 3 || !std::isfinite(tiempo) || tiempo <= 0 || hilos < 1)
             throw std::invalid_argument("Parámetros fuera de rango");
 
         const double dx = LX / (nx - 1);
         const double dy = LY / (ny - 1);
         const double dt_max = 1 / (2 * ALFA * (1/(dx*dx) + 1/(dy*dy)));
-        const int pasos = static_cast<int>(std::ceil(tiempo/(0.9*dt_max)));
+        const double pasos_reales = std::ceil(tiempo/(0.9*dt_max));
+        if (pasos_reales > std::numeric_limits<int>::max())
+            throw std::invalid_argument("Demasiados pasos temporales");
+        const int pasos = static_cast<int>(pasos_reales);
         const double dt = tiempo / pasos;
         const double rx = ALFA * dt / (dx*dx);
         const double ry = ALFA * dt / (dy*dy);
         const bool fija = (frontera == "fija");
 
-        std::vector<double> u(nx*ny), v(nx*ny);
+        std::vector<double> u(static_cast<size_t>(nx)*ny, 0.0);
+        std::vector<double> v(u.size(), 0.0);
         for (int j = 0; j < ny; ++j) {
             const double y = j*dy;
             for (int i = 0; i < nx; ++i) {
@@ -58,27 +63,45 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Cada fila se escribe en v utilizando solamente la malla anterior u.
+        auto actualizar_fila = [&](int j) {
+            const int abajo = j == 0 ? j : j-1;
+            const int arriba = j == ny-1 ? j : j+1;
+            for (int i = 0; i < nx; ++i) {
+                const int k = j*nx+i;
+                if (fija && (i == 0 || i == nx-1 || j == 0 || j == ny-1)) {
+                    v[k] = 0;
+                    continue;
+                }
+                const int izq = i == 0 ? i : i-1;
+                const int der = i == nx-1 ? i : i+1;
+                v[k] = u[k] + rx*(u[j*nx+izq] - 2*u[k] + u[j*nx+der])
+                              + ry*(u[abajo*nx+i] - 2*u[k] + u[arriba*nx+i]);
+            }
+        };
+
         const auto inicio = std::chrono::steady_clock::now();
-        for (int n = 0; n < pasos; ++n) {
-            #pragma omp parallel for schedule(static) if(hilos > 1) num_threads(hilos)
-            for (int j = 0; j < ny; ++j) {
-                const int abajo = j == 0 ? j : j-1;
-                const int arriba = j == ny-1 ? j : j+1;
-                for (int i = 0; i < nx; ++i) {
-                    const int k = j*nx+i;
-                    if (fija && (i == 0 || i == nx-1 || j == 0 || j == ny-1)) {
-                        v[k] = 0;
-                        continue;
-                    }
-                    const int izq = i == 0 ? i : i-1;
-                    const int der = i == nx-1 ? i : i+1;
-                    v[k] = u[k] + rx*(u[j*nx+izq] - 2*u[k] + u[j*nx+der])
-                                   + ry*(u[abajo*nx+i] - 2*u[k] + u[arriba*nx+i]);
+        if (hilos == 1) {
+            for (int n = 0; n < pasos; ++n) {
+                for (int j = 0; j < ny; ++j)
+                    actualizar_fila(j);
+                u.swap(v);
+            }
+        } else {
+            // El equipo de hilos se crea una sola vez.
+            #pragma omp parallel num_threads(hilos)
+            {
+                for (int n = 0; n < pasos; ++n) {
+                    #pragma omp for schedule(static)
+                    for (int j = 0; j < ny; ++j)
+                        actualizar_fila(j);
+
+                    // Las barreras evitan leer una malla mientras se escribe.
+                    #pragma omp single
+                    u.swap(v);
                 }
             }
-            u.swap(v);
         }
-
         const double segundos = std::chrono::duration<double>(
             std::chrono::steady_clock::now() - inicio).count();
         const double promedio = std::accumulate(u.begin(), u.end(), 0.0)/u.size();
